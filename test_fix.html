@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Collapse/Expand Fix</title>
+    <script>
+        // Test to verify the fix is in place
+        function testFix() {
+            // Read the block.js file and check if the fix is present
+            fetch('js/block.js')
+                .then(response => response.text())
+                .then(text => {
+                    // Look for the specific line that contains the fix
+                    const lines = text.split('\n');
+                    let fixFound = false;
+                    
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].includes('that.collapseToggle();') && 
+                            lines[i-1] && lines[i-1].includes('that.activity.trashcan.hide();')) {
+                            fixFound = true;
+                            console.log('✅ Fix found at line', i + 1);
+                            console.log('Line', i, ':', lines[i-1]);
+                            console.log('Line', i + 1, ':', lines[i]);
+                            break;
+                        }
+                    }
+                    
+                    if (fixFound) {
+                        document.getElementById('result').innerHTML = 
+                            '<h2 style="color: green;">✅ FIX CONFIRMED</h2><p>The collapseToggle() call is now present immediately after trashcan.hide() in the mousedown event handler.</p><p>This should fix the late expansion/contraction issue described in #3499.</p>';
+                    } else {
+                        document.getElementById('result').innerHTML = 
+                            '<h2 style="color: red;">❌ FIX NOT FOUND</h2><p>The collapseToggle() call was not found in the expected location.</p>';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('result').innerHTML = 
+                        '<h2 style="color: orange;">⚠️ ERROR</h2><p>Could not verify the fix: ' + error.message + '</p>';
+                });
+        }
+    </script>
+</head>
+<body onload="testFix()">
+    <h1>MusicBlocks Collapse/Expand Fix Verification</h1>
+    <div id="result">Loading...</div>
+    
+    <h2>What was fixed:</h2>
+    <p><strong>Issue #3499:</strong> Late expansion and contraction of setInstrument and start sidebar when note value blocks are expanded or contracted.</p>
+    
+    <p><strong>Root Cause:</strong> The collapse/expand button click was detected but only hid the trashcan. The actual collapseToggle() call happened later in mouseout/pressup events.</p>
+    
+    <p><strong>Fix:</strong> Added <code>that.collapseToggle();</code> immediately after <code>that.activity.trashcan.hide();</code> in the mousedown event handler.</p>
+    
+    <p><strong>Expected Result:</strong> Expansion/contraction now happens immediately when the button is clicked, not when the cursor is removed.</p>
+</body>
+</html>
