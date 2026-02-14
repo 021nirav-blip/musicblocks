@@ -3497,8 +3497,10 @@ function Synth() {
     this.removeCentsSlider = function () {
         if (this.sliderDiv && this.sliderDiv.parentNode) {
             const widgetBody = this.widgetWindow.getWidgetBody();
-            // Clear the slider interface
-            widgetBody.innerHTML = "";
+            // Clear the slider interface by removing all child nodes
+            while (widgetBody.firstChild) {
+                widgetBody.removeChild(widgetBody.firstChild);
+            }
 
             // Restore the previous content
             if (Array.isArray(this.previousContent)) {
