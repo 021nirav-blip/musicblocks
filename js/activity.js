@@ -3697,6 +3697,10 @@ class Activity {
                         this.textMsg("Alt-H " + _("Save block help"));
                         this._saveHelpBlocks();
                         break;
+                    case 84: // 'T' - Theme toggle
+                        this.textMsg("Alt-T " + _("Toggle theme"));
+                        this.themeBox.toggleDarkLightMode();
+                        break;
                     case 191:
                         if (
                             event.key == "/" &&
@@ -3723,13 +3727,19 @@ class Activity {
                         // this.textMsg("Ctl-V " + _("Paste"));
                         this.pasteBox.createBox(this.turtleBlocksScale, 200, 200);
                         this.pasteBox.show();
-                        document.getElementById("paste").style.left =
+                        document.getElementById("paste").left =
                             (this.pasteBox.getPos()[0] + 10) * this.turtleBlocksScale + "px";
-                        document.getElementById("paste").style.top =
+                        document.getElementById("paste").top =
                             (this.pasteBox.getPos()[1] + 10) * this.turtleBlocksScale + "px";
                         document.getElementById("paste").focus();
                         document.getElementById("paste").style.visibility = "visible";
                         this.update = true;
+                        break;
+                    case 84: // 'T' - Ctrl+Shift+T theme toggle
+                        if (event.shiftKey) {
+                            this.textMsg("Ctrl-Shift-T " + _("Toggle theme"));
+                            this.themeBox.toggleDarkLightMode();
+                        }
                         break;
                 }
             } else if (event.shiftKey && !disableKeys) {
