@@ -32,6 +32,7 @@ class Toolbar {
             this.language = navigator.language;
         }
         this.tooltipsDisabled = false;
+        this.stopClickHandler = null;
     }
 
     /**
@@ -410,12 +411,15 @@ class Toolbar {
         }
 
         // Named handler to prevent memory leak from duplicate listeners
-        const stopClickHandler = () => {
+        this.stopClickHandler = () => {
             clearTimeout(play_button_debounce_timeout);
             isPlayIconRunning = true;
             this.activity.hideMsgs();
             handleClick();
         };
+
+        // Remove existing listener before adding to prevent accumulation
+        stopIcon.removeEventListener("click", this.stopClickHandler);
 
         var tempClick = (playIcon.onclick = () => {
             const hideMsgs = () => {
@@ -435,9 +439,8 @@ class Toolbar {
                 handleClick();
             }, 2000);
 
-            // Remove existing listener before adding to prevent accumulation
-            stopIcon.removeEventListener("click", stopClickHandler);
-            stopIcon.addEventListener("click", stopClickHandler);
+            // Add the new listener using the instance variable
+            stopIcon.addEventListener("click", this.stopClickHandler);
         });
     }
 
@@ -622,7 +625,7 @@ class Toolbar {
     renderThemeSelectIcon(themeBox, themes) {
         const icon = docById("themeSelectIcon");
         if (!icon) return;
-    
+
         themes.forEach(theme => {
             if (localStorage.themePreference === theme) {
                 icon.innerHTML = docById(theme).innerHTML;
