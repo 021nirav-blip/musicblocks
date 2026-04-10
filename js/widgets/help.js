@@ -79,8 +79,12 @@ class HelpWidget {
         // this._helpDiv.style.overflowY = "auto";
 
         const innerHTML = `
-                    <div id="right-arrow" class="hover" tabindex="-1"></div>
-                    <div id="left-arrow" class="hover" tabindex="-1"></div>
+                    <div id="right-arrow" class="hover" tabindex="0" role="button" aria-label="${_(
+                        "Next"
+                    )}"></div>
+                    <div id="left-arrow" class="hover" tabindex="0" role="button" aria-label="${_(
+                        "Previous"
+                    )}"></div>
                     <div id="helpButtonsDiv" tabindex="-1"></div>
                     <div id="helpScrollWrapper">
                         <div id="helpBodyDiv" tabindex="-1"></div>
@@ -354,9 +358,9 @@ class HelpWidget {
             ].includes(HELPCONTENT[page][0])
         ) {
             // body = body + '<p>&nbsp;<img src="' + HELPCONTENT[page][2] + '"></p>';
-            body = `<figure>&nbsp;<img src=" ${HELPCONTENT[page][2]}"></figure>`;
+            body = `<figure><img src="${HELPCONTENT[page][2]}" alt="${HELPCONTENT[page][0]} icon" loading="lazy"></figure>`;
         } else {
-            body = `<figure>&nbsp;<img src=" ${HELPCONTENT[page][2]}" width="64px" height="64px"></figure>`;
+            body = `<figure><img src="${HELPCONTENT[page][2]}" alt="${HELPCONTENT[page][0]} icon" loading="lazy" width="64px" height="64px"></figure>`;
         }
 
         const helpContentHTML = `<h1 class="heading">${HELPCONTENT[page][0]}</h1> 
@@ -469,7 +473,11 @@ class HelpWidget {
         // this._helpDiv.style.backgroundColor = "#e8e8e8";
 
         const helpDivHTML =
-            '<div id="right-arrow" class="hover" tabindex="-1"></div><div id="left-arrow" class="hover" tabindex="-1"></div><div id="helpButtonsDiv" tabindex="-1"></div><div id="helpScrollWrapper"><div id="helpBodyDiv" tabindex="-1"></div></div>';
+            '<div id="right-arrow" class="hover" tabindex="0" role="button" aria-label="' +
+            _("Next") +
+            '"></div><div id="left-arrow" class="hover" tabindex="0" role="button" aria-label="' +
+            _("Previous") +
+            '"></div><div id="helpButtonsDiv" tabindex="-1"></div><div id="helpScrollWrapper"><div id="helpBodyDiv" tabindex="-1"></div></div>';
         this._helpDiv.insertAdjacentHTML("afterbegin", helpDivHTML);
 
         this.widgetWindow.getWidgetBody().append(this._helpDiv);

@@ -24,7 +24,7 @@
 const themeConfigs = {
     dark: {
         textColor: "#E2E2E2",
-        blockText: "#000000",
+        blockText: "#FFFFFF",
         dialogueBox: "#1C1C1C",
         strokeColor: "#E2E2E2",
         fillColor: "#F9F9F9",
@@ -250,6 +250,34 @@ class ThemeBox {
     highcontrast_onclick() {
         this._theme = "highcontrast";
         this.setPreference();
+    }
+
+    /**
+     * Initialize theme on page load - apply theme state without notification
+     * @public
+     * @returns {void}
+     */
+    initializeTheme() {
+        const body = document.body;
+        // Update body classes
+        this._themes.forEach(theme => {
+            if (theme === this._theme) {
+                body.classList.add(theme);
+            } else {
+                body.classList.remove(theme);
+            }
+        });
+
+        // Sync platformColor with the active theme config on startup
+        if (themeConfigs[this._theme] && window.platformColor) {
+            Object.assign(window.platformColor, themeConfigs[this._theme]);
+        }
+
+        // Update theme icon immediately if DOM is ready
+        this.updateThemeIcon();
+
+        // Refresh UI components (including planet iframe) if they exist
+        this.refreshUIComponents();
     }
 
     /**
@@ -491,21 +519,38 @@ class ThemeBox {
 
         // Update planet iframe theme if it exists
         const planetIframe = document.getElementById("planet-iframe");
-        if (planetIframe && planetIframe.contentDocument) {
-            try {
-                const planetBody = planetIframe.contentDocument.body;
-                if (planetBody) {
-                    this._themes.forEach(theme => {
-                        if (theme === this._theme) {
-                            planetBody.classList.add(theme);
-                        } else {
-                            planetBody.classList.remove(theme);
+        if (planetIframe) {
+            const applyPlanetTheme = () => {
+                if (
+                    planetIframe.contentDocument &&
+                    planetIframe.contentDocument.readyState === "complete"
+                ) {
+                    try {
+                        const planetBody = planetIframe.contentDocument.body;
+                        if (planetBody) {
+                            this._themes.forEach(theme => {
+                                if (theme === this._theme) {
+                                    planetBody.classList.add(theme);
+                                } else {
+                                    planetBody.classList.remove(theme);
+                                }
+                            });
                         }
-                    });
+                    } catch (e) {
+                        // Cross-origin restriction may prevent this
+                        console.debug("Could not update planet iframe theme:", e);
+                    }
                 }
-            } catch (e) {
-                // Cross-origin restriction may prevent this
-                console.debug("Could not update planet iframe theme:", e);
+            };
+
+            // Apply immediately if already loaded, otherwise wait for load event
+            if (
+                planetIframe.contentDocument &&
+                planetIframe.contentDocument.readyState === "complete"
+            ) {
+                applyPlanetTheme();
+            } else {
+                planetIframe.addEventListener("load", applyPlanetTheme, { once: true });
             }
         }
     }

@@ -14,10 +14,21 @@
 // (https://github.com/walterbender/turtleart), but implemented from
 // scratch. -- Walter Bender, October 2014.
 
+try {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has("layoutProfiling")) {
+        window.__ENABLE_REFRESH_PROFILING__ = urlParams.get("layoutProfiling") !== "false";
+    } else {
+        window.__ENABLE_REFRESH_PROFILING__ = false;
+    }
+} catch (e) {
+    window.__ENABLE_REFRESH_PROFILING__ = false;
+}
+
 /*
    global
 
-   ALTO, analyzeProject, BASS, BIGGERBUTTON, BIGGERDISABLEBUTTON,
+   ALTO, analyzeProject, BASS, BIGGERBUTTON, BIGGERDISABLEBUTTON, debugLog,
    ActivityContext,
    Boundary, CARTESIAN, changeImage, closeWidgets,
    COLLAPSEBLOCKSBUTTON, COLLAPSEBUTTON, createDefaultStack,
@@ -79,9 +90,10 @@ let MYDEFINES = [
     // on demand when the widget is opened, saving ~3-5 MB of heap memory.
     // "Chart",
     "utils/utils",
+    "utils/retryWithBackoff",
+    "utils/debugLog",
     "activity/artwork",
     "widgets/status",
-    "widgets/help",
     "utils/munsell",
     "activity/toolbar",
     "activity/trash",
@@ -112,24 +124,6 @@ let MYDEFINES = [
     "activity/pastebox",
     "prefixfree.min",
     "Tone",
-    "activity/js-export/samples/sample",
-    "activity/js-export/export",
-    "activity/js-export/interface",
-    "activity/js-export/constraints",
-    "activity/js-export/ASTutils",
-    "activity/js-export/generate",
-    "activity/js-export/ast2blocklist",
-    "activity/js-export/API/GraphicsBlocksAPI",
-    "activity/js-export/API/PenBlocksAPI",
-    "activity/js-export/API/RhythmBlocksAPI",
-    "activity/js-export/API/MeterBlocksAPI",
-    "activity/js-export/API/PitchBlocksAPI",
-    "activity/js-export/API/IntervalsBlocksAPI",
-    "activity/js-export/API/ToneBlocksAPI",
-    "activity/js-export/API/OrnamentBlocksAPI",
-    "activity/js-export/API/VolumeBlocksAPI",
-    "activity/js-export/API/DrumBlocksAPI",
-    "activity/js-export/API/DictBlocksAPI",
     "activity/turtleactions/RhythmActions",
     "activity/turtleactions/MeterActions",
     "activity/turtleactions/PitchActions",
@@ -163,10 +157,30 @@ let MYDEFINES = [
     "activity/blocks/MediaBlocks",
     "activity/blocks/SensorsBlocks",
     "activity/blocks/EnsembleBlocks",
-    "widgets/widgetWindows",
-    "widgets/statistics",
-    "widgets/jseditor"
+    "widgets/widgetWindows"
 ];
+
+/**
+ * Dynamically load one or more RequireJS modules on demand.
+ * Returns a Promise that resolves once all modules are loaded.
+ * RequireJS caches modules, so subsequent calls are instant.
+ *
+ * @param {string|string[]} modulePaths - Module path(s) to load.
+ * @returns {Promise<void>}
+ */
+function lazyLoad(modulePaths) {
+    // In Node/Jest (CommonJS), modules are already available as globals — resolve immediately.
+    if (typeof define !== "function" || !define.amd) {
+        return Promise.resolve();
+    }
+
+    // In browser with RequireJS (AMD), load modules dynamically.
+    return new Promise(resolve => {
+        require(Array.isArray(modulePaths) ? modulePaths : [modulePaths], function () {
+            resolve();
+        });
+    });
+}
 
 if (_THIS_IS_MUSIC_BLOCKS_) {
     const MUSICBLOCKS_EXTRAS = [
@@ -191,11 +205,7 @@ if (_THIS_IS_MUSIC_BLOCKS_) {
         "widgets/oscilloscope",
         "widgets/sampler",
         "widgets/reflection",
-        "widgets/legobricks",
-        "activity/lilypond",
-        "activity/abc",
-        "activity/midi",
-        "activity/mxml"
+        "widgets/legobricks"
     ];
     MYDEFINES = MYDEFINES.concat(MUSICBLOCKS_EXTRAS);
 }
@@ -218,7 +228,6 @@ const doAnalyzeProject = function () {
 /**
  * Represents an activity in the application.
  */
-
 class Activity {
     /**
      * Creates an Activity instance.
@@ -1258,7 +1267,7 @@ class Activity {
                         const protoblk = obj[0];
                         const paletteName = obj[1];
                         const protoName = obj[2];
-                        // eslint-disable-next-line no-prototype-builtins
+
                         if (that.blocks.protoBlockDict.hasOwnProperty(protoName)) {
                             that.palettes.dict[paletteName].makeBlockFromSearch(
                                 protoblk,
@@ -1279,7 +1288,7 @@ class Activity {
                     }
 
                     setTimeout(() => {
-                        console.log("Saving help artwork: " + name + "_block.svg");
+                        debugLog("Saving help artwork: " + name + "_block.svg");
                         const svg = "data:image/svg+xml;utf8," + that.printBlockSVG();
                         that.save.download("svg", svg, name + "_block.svg");
                     }, 500);
@@ -1551,7 +1560,9 @@ class Activity {
             importConfirm.textContent = _("Confirm");
             importConfirm.addEventListener("click", () => {
                 const maxNoteBlocks = select.value;
-                transcribeMidi(midi, maxNoteBlocks);
+                require(["activity/midi"], function () {
+                    transcribeMidi(midi, maxNoteBlocks);
+                });
                 document.body.removeChild(modal);
             });
             modal.appendChild(importConfirm);
@@ -1679,6 +1690,10 @@ class Activity {
                     helpfulWheelDiv.style.display = "none";
                     this.__tick();
                 }
+
+                if (this.cleanupIdleWatcher) {
+                    this.cleanupIdleWatcher();
+                }
             };
 
             if (skipConfirmation) {
@@ -1708,7 +1723,10 @@ class Activity {
 
             const currentDelay = this.logo.turtleDelay;
             this.logo.turtleDelay = 0;
-            this.logo.synth.resume();
+            if (this.logo?.synth?.resume) {
+                this.logo.synth.resume();
+            }
+
             const widgetTitle = document.getElementsByClassName("wftTitle");
             for (let i = 0; i < widgetTitle.length; i++) {
                 if (widgetTitle[i].innerHTML === "tempo") {
@@ -2016,7 +2034,7 @@ class Activity {
                 let recordedChunks = [];
                 mediaRecorder = new MediaRecorder(stream);
                 stream.oninactive = function () {
-                    console.log("Recording is ready to save");
+                    debugLog("Recording is ready to save");
                     stopRec();
                     flag = 0;
                 };
@@ -2036,7 +2054,7 @@ class Activity {
 
                 mediaRecorder.start(200);
                 setTimeout(() => {
-                    console.log("Resizing for Record", that.canvas.height);
+                    debugLog("Resizing for Record", that.canvas.height);
                     that._onResize();
                 }, 500);
                 return mediaRecorder;
@@ -2055,7 +2073,7 @@ class Activity {
                         const stream = await recordScreen();
                         const mimeType = "video/webm";
                         mediaRecorder = createRecorder(stream, mimeType);
-                        if (flag == 1) {
+                        if (flag === 1) {
                             start.removeEventListener("click", handler);
                             // Add stop handler
                             const stopHandler = function stopHandler() {
@@ -2094,7 +2112,7 @@ class Activity {
             }
 
             // Start recording process if not already executing
-            if (flag == 0 && isExecuting) {
+            if (flag === 0 && isExecuting) {
                 recording();
                 start.dispatchEvent(clickEvent);
             }
@@ -2118,7 +2136,9 @@ class Activity {
             hideDOMLabel();
 
             this.logo.turtleDelay = DEFAULTDELAY;
-            this.logo.synth.resume();
+            if (this.logo?.synth?.resume) {
+                this.logo.synth.resume();
+            }
 
             if (!this.turtles.running()) {
                 this.logo.runLogoCommands();
@@ -2145,7 +2165,9 @@ class Activity {
             hideDOMLabel();
 
             const turtleCount = Object.keys(this.logo.stepQueue).length;
-            this.logo.synth.resume();
+            if (this.logo?.synth?.resume) {
+                this.logo.synth.resume();
+            }
 
             if (turtleCount === 0 || this.logo.turtleDelay !== this.TURTLESTEP) {
                 // Either we haven't set up a queue or we are
@@ -2207,6 +2229,10 @@ class Activity {
                     }
                     break;
                 }
+            }
+
+            if (this.cleanupIdleWatcher) {
+                this.cleanupIdleWatcher();
             }
         };
 
@@ -2488,15 +2514,15 @@ class Activity {
                     const name =
                         this.palettes.dict[this.palettes.activePalette].protoList[i]["name"];
                     if (name in obj["FLOWPLUGINS"]) {
-                        console.log("deleting " + name);
+                        debugLog("deleting " + name);
                         delete obj["FLOWPLUGINS"][name];
                     }
                     if (name in obj["BLOCKPLUGINS"]) {
-                        console.log("deleting " + name);
+                        debugLog("deleting " + name);
                         delete obj["BLOCKPLUGINS"][name];
                     }
                     if (name in obj["ARGPLUGINS"]) {
-                        console.log("deleting " + name);
+                        debugLog("deleting " + name);
                         delete obj["ARGPLUGINS"][name];
                     }
                 }
@@ -3056,6 +3082,11 @@ class Activity {
             let lastActivity = Date.now();
             this.isAppIdle = false;
 
+            // Prevent duplicate intervals
+            if (this._idleWatcherIntervalId) {
+                clearInterval(this._idleWatcherIntervalId);
+            }
+
             // Wake up function - restores full framerate
             // Stored as instance property for cleanup
             this._resetIdleTimer = () => {
@@ -3084,7 +3115,7 @@ class Activity {
                     if (!this.isAppIdle) {
                         this.isAppIdle = true;
                         createjs.Ticker.framerate = IDLE_FPS;
-                        console.log("⚡ Idle mode: Throttling to 1 FPS to save battery");
+                        debugLog("⚡ Idle mode: Throttling to 1 FPS to save battery");
                     }
                 } else if (this.isAppIdle && isMusicPlaying) {
                     // Music started playing - wake up immediately
@@ -3680,15 +3711,21 @@ class Activity {
             const KEYCODE_DOWN = 40;
             const DEL = 46;
             const V = 86;
+            const lilypondModal = document.getElementById("lilypondModal");
+            const samplerPrompt = document.getElementById("samplerPrompt");
+            const planetIframe = document.getElementById("planet-iframe");
+            const pasteEl = this.paste;
+            const wheelDiv = document.getElementById("wheelDiv");
+            const stopbtn = document.getElementById("stop");
             const disableKeys =
-                document.getElementById("lilypondModal").style.display === "block" ||
+                lilypondModal.style.display === "block" ||
                 this.searchWidget.style.visibility === "visible" ||
                 this.helpfulSearchWidget.style.visibility === "visible" ||
                 this.isInputON ||
-                document.getElementById("samplerPrompt") ||
-                document.getElementById("planet-iframe").style.display === "" ||
-                document.getElementById("paste").style.visibility === "visible" ||
-                document.getElementById("wheelDiv").style.display === "" ||
+                samplerPrompt ||
+                planetIframe.style.display === "" ||
+                pasteEl.style.visibility === "visible" ||
+                wheelDiv.style.display === "" ||
                 this.turtles.running();
             const widgetTitle = document.getElementsByClassName("wftTitle");
             for (let i = 0; i < widgetTitle.length; i++) {
@@ -3699,9 +3736,9 @@ class Activity {
             }
             if (
                 (event.altKey && !disableKeys) ||
-                event.keyCode == 13 ||
-                event.key == "/" ||
-                event.key == "\\"
+                event.keyCode === 13 ||
+                event.key === "/" ||
+                event.key === "\\"
             ) {
                 switch (event.keyCode) {
                     case 66: // 'B'
@@ -3719,7 +3756,6 @@ class Activity {
                     case 82: {
                         // 'R or ENTER'
                         this.textMsg("Alt-R " + _("Play"));
-                        const stopbtn = document.getElementById("stop");
                         if (stopbtn) {
                             stopbtn.style.color = platformColor.stopIconcolor;
                         }
@@ -3733,9 +3769,9 @@ class Activity {
                         if (this.searchWidget.style.visibility === "visible") {
                             return;
                         }
-                        if (document.getElementById("paste").style.visibility === "visible") {
+                        if (pasteEl.style.visibility === "visible") {
                             this.pasted();
-                            document.getElementById("paste").style.visibility = "hidden";
+                            pasteEl.style.visibility = "hidden";
                             return;
                         }
 
@@ -3746,7 +3782,6 @@ class Activity {
                         if (this.turtles.running()) {
                             this._doHardStopButton();
                         } else if (!hasOpenWidget) {
-                            const stopbtn = document.getElementById("stop");
                             if (stopbtn) {
                                 stopbtn.style.color = platformColor.stopIconcolor;
                             }
@@ -3768,9 +3803,9 @@ class Activity {
                         break;
                     case 191:
                         if (
-                            event.key == "/" &&
+                            event.key === "/" &&
                             !this.beginnerMode &&
-                            disableHorizScrollIcon.style.display == "block"
+                            disableHorizScrollIcon.style.display === "block"
                         ) {
                             this.blocksContainer.x += this.canvas.width / 10;
                             this.stageDirty = true;
@@ -3778,9 +3813,9 @@ class Activity {
                     // fall through
                     case 220:
                         if (
-                            event.key == "\\" &&
+                            event.key === "\\" &&
                             !this.beginnerMode &&
-                            disableHorizScrollIcon.style.display == "block"
+                            disableHorizScrollIcon.style.display === "block"
                         ) {
                             this.blocksContainer.x -= this.canvas.width / 10;
                             this.stageDirty = true;
@@ -3792,12 +3827,12 @@ class Activity {
                         // this.textMsg("Ctl-V " + _("Paste"));
                         this.pasteBox.createBox(this.turtleBlocksScale, 200, 200);
                         this.pasteBox.show();
-                        document.getElementById("paste").style.left =
+                        pasteEl.style.left =
                             (this.pasteBox.getPos()[0] + 10) * this.turtleBlocksScale + "px";
-                        document.getElementById("paste").style.top =
+                        pasteEl.style.top =
                             (this.pasteBox.getPos()[1] + 10) * this.turtleBlocksScale + "px";
-                        document.getElementById("paste").focus();
-                        document.getElementById("paste").style.visibility = "visible";
+                        pasteEl.focus();
+                        pasteEl.style.visibility = "visible";
                         this.update = true;
                         break;
                 }
@@ -3813,11 +3848,8 @@ class Activity {
                         break;
                 }
             } else {
-                if (
-                    document.getElementById("paste").style.visibility === "visible" &&
-                    event.keyCode === RETURN
-                ) {
-                    if (document.getElementById("paste").value.length > 0) {
+                if (pasteEl.style.visibility === "visible" && event.keyCode === RETURN) {
+                    if (pasteEl.value.length > 0) {
                         this.pasted();
                     }
                 } else if (event.keyCode === SPACE) {
@@ -3830,7 +3862,6 @@ class Activity {
                         this._doHardStopButton();
                     } else if (!disableKeys && !hasOpenWidget) {
                         event.preventDefault();
-                        const stopbtn = document.getElementById("stop");
                         if (stopbtn) {
                             stopbtn.style.color = platformColor.stopIconcolor;
                         }
@@ -4252,8 +4283,6 @@ class Activity {
 
                 container.style.width = windowWidth + "px";
                 container.style.height = windowHeight + "px";
-                canvas.width = windowWidth;
-                canvas.height = windowHeight;
                 overCanvas.width = canvas.width;
                 overCanvas.height = canvas.height;
                 canvasHolder.width = canvas.width;
@@ -4831,13 +4860,19 @@ class Activity {
          * Updates all canvas elements by marking stage as dirty.
          * The actual render will happen on the next animation frame.
          */
+        let refreshCount = 0;
+        let totalRefreshTime = 0;
+        let maxRefreshTime = 0;
+        let lastRefreshReport = performance.now();
+
         this.refreshCanvas = () => {
             if (this.blockRefreshCanvas) {
                 return;
             }
 
+            const start = window.__ENABLE_REFRESH_PROFILING__ ? performance.now() : 0;
+
             this.blockRefreshCanvas = true;
-            // Mark stage as needing update
             this.stageDirty = true;
             this.update = true;
 
@@ -4845,6 +4880,27 @@ class Activity {
             setTimeout(() => {
                 that.blockRefreshCanvas = false;
                 that.stageDirty = true;
+
+                if (window.__ENABLE_REFRESH_PROFILING__) {
+                    const duration = performance.now() - start;
+                    refreshCount++;
+                    totalRefreshTime += duration;
+                    maxRefreshTime = Math.max(maxRefreshTime, duration);
+
+                    if (refreshCount % 25 === 0) {
+                        const now = performance.now();
+                        const cps = (25 / (now - lastRefreshReport)) * 1000;
+                        console.log(
+                            `refreshCanvas | Avg: ${(totalRefreshTime / refreshCount).toFixed(
+                                2
+                            )}ms | Max: ${maxRefreshTime.toFixed(2)}ms | Rate: ${cps.toFixed(
+                                1
+                            )} calls/sec`
+                        );
+                        maxRefreshTime = 0;
+                        lastRefreshReport = now;
+                    }
+                }
             }, 5);
         };
 
@@ -5175,7 +5231,7 @@ class Activity {
             const pitch = pitches;
             pitchDuration = toFraction(pitchDuration);
             const adjustedNote = _adjustPitch(pitch.name, keySignature).toUpperCase();
-            if (triplet !== undefined && triplet !== null) {
+            if (triplet != null) {
                 pitchDuration[1] = meterDen * triplet;
             }
 
@@ -5329,7 +5385,7 @@ class Activity {
                                     blockId + 13,
                                     [
                                         "modename",
-                                        { value: staff.key.mode == "m" ? "minor" : "major" }
+                                        { value: staff.key.mode === "m" ? "minor" : "major" }
                                     ],
                                     0,
                                     0,
@@ -5416,7 +5472,7 @@ class Activity {
 
                         // Update the namedo block if not first
                         // nameddo block appear
-                        if (staffBlocksMap[lineId].baseBlocks.length != 0) {
+                        if (staffBlocksMap[lineId].baseBlocks.length !== 0) {
                             staffBlocksMap[lineId].baseBlocks[
                                 staffBlocksMap[lineId].baseBlocks.length - 1
                             ][0][
@@ -5513,7 +5569,7 @@ class Activity {
                     ][0];
                 const repeatblockids = staffBlocksMap[staffIndex].repeatArray;
                 for (const repeatId of repeatblockids) {
-                    if (repeatId.start == 0) {
+                    if (repeatId.start === 0) {
                         staffBlocksMap[staffIndex].repeatBlock.push([
                             blockId,
                             "repeat",
@@ -5569,7 +5625,7 @@ class Activity {
                                 ]
                             );
 
-                            if (secondnammedo != -1) {
+                            if (secondnammedo !== -1) {
                                 staffBlocksMap[staffIndex].baseBlocks[repeatId.end + 1][0][
                                     secondnammedo
                                 ][4][0] = blockId;
@@ -5640,7 +5696,7 @@ class Activity {
                             100,
                             [blockId]
                         ]);
-                        if (prevnameddo != -1) {
+                        if (prevnameddo !== -1) {
                             staffBlocksMap[staffIndex].baseBlocks[repeatId.start - 1][0][
                                 prevnameddo
                             ][4][1] = blockId;
@@ -6114,10 +6170,10 @@ class Activity {
             this.trebleBitmap.updateCache();
             this._hideAccidentals();
 
-            console.log(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
+            debugLog(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
             const scale = buildScale(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1])[0];
 
-            console.log(scale);
+            debugLog(scale);
             const _sharps = [
                 "F" + SHARP,
                 "C" + SHARP,
@@ -6181,10 +6237,10 @@ class Activity {
             this.grandBitmap.updateCache();
             this._hideAccidentals();
 
-            console.log(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
+            debugLog(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
             const scale = buildScale(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1])[0];
 
-            console.log(scale);
+            debugLog(scale);
             const _sharps = [
                 "F" + SHARP,
                 "C" + SHARP,
@@ -6246,10 +6302,10 @@ class Activity {
             this.sopranoBitmap.updateCache();
             this._hideAccidentals();
 
-            console.log(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
+            debugLog(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
             const scale = buildScale(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1])[0];
 
-            console.log(scale);
+            debugLog(scale);
             const _sharps = [
                 "F" + SHARP,
                 "C" + SHARP,
@@ -6317,10 +6373,10 @@ class Activity {
             this.altoBitmap.updateCache();
             this._hideAccidentals();
 
-            console.log(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
+            debugLog(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
             const scale = buildScale(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1])[0];
 
-            console.log(scale);
+            debugLog(scale);
             const _sharps = [
                 "F" + SHARP,
                 "C" + SHARP,
@@ -6383,10 +6439,10 @@ class Activity {
             this.tenorBitmap.updateCache();
             this._hideAccidentals();
 
-            console.log(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
+            debugLog(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
             const scale = buildScale(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1])[0];
 
-            console.log(scale);
+            debugLog(scale);
             const _sharps = [
                 "F" + SHARP,
                 "C" + SHARP,
@@ -6450,10 +6506,10 @@ class Activity {
             this.bassBitmap.updateCache();
             this._hideAccidentals();
 
-            console.log(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
+            debugLog(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1]);
             const scale = buildScale(this.KeySignatureEnv[0] + " " + this.KeySignatureEnv[1])[0];
 
-            console.log(scale);
+            debugLog(scale);
             const _sharps = [
                 "F" + SHARP,
                 "C" + SHARP,
@@ -6582,11 +6638,11 @@ class Activity {
                                         this.blocks.blockList[myBlock.connections[1]].value;
                                 }
 
-                                console.log(customName);
+                                debugLog(customName);
                                 args = {
                                     customName: customName,
                                     customTemperamentNotes: getTemperament(customName),
-                                    startingPitch: this.logo.synth.startingPitch,
+                                    startingPitch: this.logo?.synth?.startingPitch || 392,
                                     octaveSpace: getOctaveRatio()
                                 };
                             }
@@ -6686,10 +6742,45 @@ class Activity {
             activity._doOpenPlugin();
         };
 
+        this._loadBuiltInPlugin = name => {
+            const url = "plugins/" + name + ".json";
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);
+            const that = this;
+            xhr.onload = () => {
+                if (xhr.status === 200) {
+                    const obj = processRawPluginData(that, xhr.responseText, url);
+                    // Save plugins to local storage.
+                    if (obj !== null) {
+                        that.storage.plugins = preparePluginExports(that, obj);
+                    }
+                    // Refresh the palettes.
+                    setTimeout(() => {
+                        if (that.palettes.visible) {
+                            that.palettes.hide();
+                        }
+                    }, 1000);
+                } else {
+                    console.error("Could not load built-in plugin: " + name);
+                }
+            };
+            xhr.send();
+        };
+
         this._doOpenPlugin = () => {
             this.toolbar.closeAuxToolbar(showHideAuxMenu);
-            this.pluginChooser.focus();
-            this.pluginChooser.click();
+            const name = prompt(
+                _("Enter the name of a built-in plugin, or leave blank to upload a plugin file:")
+            );
+            if (name === null) {
+                return; // User cancelled the operation
+            }
+            if (name.trim() !== "") {
+                this._loadBuiltInPlugin(name.trim().toLowerCase());
+            } else {
+                this.pluginChooser.focus();
+                this.pluginChooser.click();
+            }
         };
 
         /*
@@ -7073,12 +7164,34 @@ class Activity {
         /**
          * Toggles display of javaScript editor widget.
          */
-        const toggleJSWindow = activity => {
+        const toggleJSWindow = async activity => {
+            await lazyLoad([
+                "widgets/jseditor",
+                "activity/js-export/samples/sample",
+                "activity/js-export/export",
+                "activity/js-export/interface",
+                "activity/js-export/constraints",
+                "activity/js-export/ASTutils",
+                "activity/js-export/generate",
+                "activity/js-export/ast2blocklist",
+                "activity/js-export/API/GraphicsBlocksAPI",
+                "activity/js-export/API/PenBlocksAPI",
+                "activity/js-export/API/RhythmBlocksAPI",
+                "activity/js-export/API/MeterBlocksAPI",
+                "activity/js-export/API/PitchBlocksAPI",
+                "activity/js-export/API/IntervalsBlocksAPI",
+                "activity/js-export/API/ToneBlocksAPI",
+                "activity/js-export/API/OrnamentBlocksAPI",
+                "activity/js-export/API/VolumeBlocksAPI",
+                "activity/js-export/API/DrumBlocksAPI",
+                "activity/js-export/API/DictBlocksAPI"
+            ]);
             new JSEditor(activity);
         };
 
-        const doAnalytics = activity => {
+        const doAnalytics = async activity => {
             if (!activity.statsWindow || !activity.statsWindow.isOpen) {
+                await lazyLoad("widgets/statistics");
                 activity.statsWindow = new StatsWindow(activity);
             }
         };
@@ -7090,8 +7203,9 @@ class Activity {
             activity._showHelp();
         };
 
-        this._showHelp = () => {
+        this._showHelp = async () => {
             // Will show welcome page by default.
+            await lazyLoad("widgets/help");
             new HelpWidget(this, false);
         };
 
@@ -7102,8 +7216,9 @@ class Activity {
             activity._showAboutPage();
         };
 
-        this._showAboutPage = () => {
+        this._showAboutPage = async () => {
             // Will show welcome page by default.
+            await lazyLoad("widgets/help");
             new HelpWidget(this, false);
         };
 
@@ -7181,10 +7296,15 @@ class Activity {
             }
 
             const cleanData = rawData.replace("\n", " ");
+
             try {
                 obj = JSON.parse(cleanData);
             } catch (e) {
-                this.errorMsg(_("Could not parse JSON input."));
+                this.errorMsg(
+                    _(
+                        "Invalid clipboard data. To paste blocks, first copy them from the Music Blocks canvas. To paste text, click inside an input field."
+                    )
+                );
                 return;
             }
 
@@ -7232,7 +7352,14 @@ class Activity {
             this.update = true;
 
             // Get things started
+            this._perfMark("activity.domReady.start");
             await this.init();
+            this._perfMark("activity.domReady.end");
+            this._perfMeasure(
+                "activity.domReady_total",
+                "activity.domReady.start",
+                "activity.domReady.end"
+            );
         };
 
         this.__saveLocally = () => {
@@ -7579,6 +7706,7 @@ class Activity {
             this._initialized = true;
 
             // Batch DOM reads before any writes to avoid forced synchronous layout
+            this._perfMark("activity.init.start");
             this._clientWidth = document.body.clientWidth;
             this._clientHeight = document.body.clientHeight;
             this._innerWidth = window.innerWidth;
@@ -7689,6 +7817,10 @@ class Activity {
             this.pasteBox = new PasteBox(this);
             this.languageBox = new LanguageBox(this);
             this.themeBox = new ThemeBox(this);
+            // Initialize theme state on page load if method exists
+            if (this.themeBox && typeof this.themeBox.initializeTheme === "function") {
+                this.themeBox.initializeTheme();
+            }
 
             // Show help on startup if first-time user.
             if (this.firstTimeUser) {
@@ -7747,6 +7879,7 @@ class Activity {
             this.toolbar.renderJavaScriptIcon(toggleJSWindow);
             this.toolbar.renderLanguageSelectIcon(this.languageBox);
             this.toolbar.renderWrapIcon();
+            this._perfMark("activity.init.ui_ready");
 
             initPalettes(this.palettes);
 
@@ -7999,7 +8132,7 @@ class Activity {
                     await ensureABCJS();
                     const tunebook = new ABCJS.parseOnly(abcData);
 
-                    console.log(tunebook);
+                    debugLog(tunebook);
                     tunebook.forEach(tune => {
                         //call parseABC to parse abcdata to MB json
                         this.parseABC(tune);
@@ -8011,13 +8144,13 @@ class Activity {
                 if (files[0] !== undefined) {
                     const extension = files[0].name.split(".").pop().toLowerCase(); //file extension from input file
 
-                    const isMidi = extension == "mid" || extension == "midi";
+                    const isMidi = extension === "mid" || extension === "midi";
                     if (isMidi) {
                         midiReader.readAsArrayBuffer(files[0]);
                         return;
                     }
 
-                    const isABC = extension == "abc";
+                    const isABC = extension === "abc";
                     if (isABC) {
                         abcReader.readAsText(files[0]);
                         return;
@@ -8064,7 +8197,9 @@ class Activity {
                             const obj = processRawPluginData(
                                 that,
                                 reader.result,
-                                pluginFile && pluginFile.name ? pluginFile.name : "local-file"
+                                pluginFile && pluginFile.name
+                                    ? "file:" + pluginFile.name
+                                    : "file:local-file"
                             );
                             // Save plugins to local storage.
                             if (obj !== null) {
@@ -8294,7 +8429,71 @@ class Activity {
             if (this.planet !== undefined) {
                 this.planet.planet.setAnalyzeProject(doAnalyzeProject);
             }
+
+            this._perfMark("activity.init.end");
+            this._perfMeasure("activity.init_total", "activity.init.start", "activity.init.end");
+            this._perfMeasure(
+                "activity.init_to_ui_ready",
+                "activity.init.start",
+                "activity.init.ui_ready"
+            );
+            this._perfMeasure(
+                "loader_to_activity_init_complete",
+                "loader.main.start",
+                "activity.init.end"
+            );
+
+            if (
+                typeof window !== "undefined" &&
+                window.__mbPerf &&
+                typeof window.__mbPerf.report === "function"
+            ) {
+                window.__mbPerf.report();
+            }
         };
+    }
+
+    /**
+     * Record a named performance mark in the global mbPerf tracker.
+     * @param {string} markName - The mark identifier.
+     * @returns {void}
+     */
+    _perfMark(markName) {
+        if (
+            typeof window === "undefined" ||
+            !window.__mbPerf ||
+            !window.__mbPerf.enabled ||
+            !window.__mbPerf.marks
+        ) {
+            return;
+        }
+        if (typeof performance === "undefined" || typeof performance.now !== "function") {
+            return;
+        }
+        window.__mbPerf.marks[markName] = performance.now();
+    }
+
+    /**
+     * Measure elapsed milliseconds between two mbPerf marks.
+     * @param {string} measureName - The measure identifier.
+     * @param {string} startMark - Start mark name.
+     * @param {string} endMark - End mark name.
+     * @returns {void}
+     */
+    _perfMeasure(measureName, startMark, endMark) {
+        if (
+            typeof window === "undefined" ||
+            !window.__mbPerf ||
+            !window.__mbPerf.enabled ||
+            !window.__mbPerf.marks ||
+            !window.__mbPerf.measures
+        ) {
+            return;
+        }
+        const start = window.__mbPerf.marks[startMark];
+        const end = window.__mbPerf.marks[endMark];
+        if (typeof start !== "number" || typeof end !== "number") return;
+        window.__mbPerf.measures[measureName] = +(end - start).toFixed(2);
     }
 
     /**

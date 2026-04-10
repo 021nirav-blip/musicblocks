@@ -39,7 +39,7 @@
    oneHundredToFraction, prepareMacroExports, preparePluginExports,
    processMacroData, processRawPluginData, rationalSum, rgbToHex,
    safeSVG, toFixed2, toTitleCase, windowHeight, windowWidth,
-    fnBrowserDetect, waitForReadiness
+    fnBrowserDetect, waitForReadiness, isSafeUrl
 */
 
 /**
@@ -64,7 +64,7 @@ const changeImage = (imgElement, from, to) => {
  * @param {string} text - The input text to be translated.
  * @returns {string} The translated text.
  */
-// eslint-disable-next-line no-redeclare
+
 function _(text, options = {}) {
     if (!text) return "";
 
@@ -442,7 +442,7 @@ window.onload = () => {
         );
     }
 
-    if (typeof DetectVersionOfIE != "undefined") {
+    if (typeof DetectVersionOfIE !== "undefined") {
         document.body.innerHTML = "<div style='margin: 200px;'>";
         document.body.innerHTML +=
             "<h1 style='font-size: 100px; font-family: Arial; text-align: center; color: #F00;'>Music Blocks</h1>";
@@ -656,6 +656,54 @@ if (typeof window !== "undefined") {
 }
 
 /**
+ * Escapes HTML special characters to prevent XSS when injecting
+ * user-provided values into HTML.
+ * @param {string} str - The string to escape.
+ * @returns {string} The escaped string safe for HTML insertion.
+ */
+function escapeHTML(str) {
+    const escapeMap = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+    };
+    return String(str).replace(/[&<>"']/g, char => escapeMap[char]);
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports.escapeHTML = escapeHTML;
+}
+if (typeof window !== "undefined") {
+    window.escapeHTML = escapeHTML;
+}
+
+/**
+ * Validates that a URL string uses a safe protocol (http or https).
+ * Uses the URL API for robust parsing instead of fragile regex patterns.
+ * This prevents open redirect attacks via javascript:, data:, vbscript:,
+ * or other dangerous URI schemes.
+ * @param {string} urlString - The URL string to validate.
+ * @returns {boolean} True if the URL uses http: or https: protocol.
+ */
+function isSafeUrl(urlString) {
+    try {
+        const parsed = new URL(urlString);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch (e) {
+        return false;
+    }
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports.isSafeUrl = isSafeUrl;
+}
+if (typeof window !== "undefined") {
+    window.isSafeUrl = isSafeUrl;
+}
+
+/**
  * Processes plugin data and updates the activity based on the provided JSON-encoded dictionary.
  * @param {object} activity - The activity object to update.
  * @param {string} pluginData - The JSON-encoded plugin data.
@@ -667,40 +715,62 @@ const processPluginData = (activity, pluginData, pluginSource) => {
         return null;
     }
 
-    const isTrustedPluginSource = src => {
-        if (!src) return false;
-
-        // allow only local paths
-        return (
-            src.startsWith("./") ||
-            src.startsWith("../") ||
-            src.startsWith("/") ||
-            (!src.includes("http://") && !src.includes("https://"))
-        );
+    const isVettedPlugin = source => {
+        if (!source) return false;
+        // Plugins from the local plugins folder are considered vetted (provenance)
+        if (source.startsWith("plugins/") || source.startsWith("./plugins/")) {
+            return true;
+        }
+        // Known plugins from local storage are also trusted as they were approved previously
+        if (source === "localStorage:plugins") {
+            return true;
+        }
+        return false;
     };
 
-    const safeEval = (code, label = "plugin") => {
-        if (typeof code !== "string") return;
+    // Use the vetted check to determine initial trust
+    let userConfirmed = isVettedPlugin(pluginSource);
 
-        // basic sanity limit (prevents huge payloads)
+    if (!userConfirmed) {
+        userConfirmed = confirm(
+            _("Security Warning") +
+                "\n\n" +
+                _(
+                    "This plugin contains code that will be executed in your browser. It has not been loaded from the built-in plugins directory and may contain unsafe code."
+                ) +
+                "\n\n" +
+                _("Do you want to allow this plugin to run?") +
+                "\n\n" +
+                _("Source: ") +
+                (pluginSource || _("unknown"))
+        );
+
+        if (!userConfirmed) {
+            console.warn("User declined unvetted plugin execution:", pluginSource);
+            return null;
+        }
+    }
+
+    // safeEval is now restricted to vetted or confirmed plugins and used only for setup logic.
+    // Hot-path execution is handled via safePluginExecute in logo.js.
+    const safeEval = (code, label = "plugin") => {
+        if (typeof code !== "string" || !userConfirmed) return;
+
+        // Basic sanity limit
         if (code.length > 500000) {
             console.warn("Plugin code too large:", label);
             return;
         }
 
-        // NOTE: This eval is required for the Plugin system to load dynamic block definitions.
-        // The content comes from plugin JSON files which satisfy the isTrustedPluginSource check.
         try {
-            eval(code);
+            // We use new Function for setup-time evaluation of trusted logic.
+            // This is safer than eval() as it doesn't grant access to the local scope.
+            const setupFn = new Function("activity", "globalActivity", code);
+            setupFn(activity, activity);
         } catch (e) {
-            console.error("Plugin execution failed:", label, e);
+            console.error("Plugin setup failed:", label, e);
         }
     };
-
-    if (!isTrustedPluginSource(pluginSource)) {
-        console.warn("Blocked untrusted plugin source:", pluginSource);
-        return null;
-    }
 
     let obj;
     try {
@@ -793,17 +863,23 @@ const processPluginData = (activity, pluginData, pluginSource) => {
     if ("FLOWPLUGINS" in obj) {
         for (const flow in obj["FLOWPLUGINS"]) {
             try {
-                // SECURITY: Plugins are trusted code.
-                activity.logo.evalFlowDict[flow] = new Function(
-                    "logo",
-                    "turtle",
-                    "blk",
-                    "receivedArg",
-                    "actionArgs",
-                    "args",
-                    "isflow",
-                    obj["FLOWPLUGINS"][flow]
-                );
+                // Pre-compile trusted plugins for performance.
+                // UNTRUSTED plugins (if any made it past confirmation) are stored as strings
+                // and handled via whitelist in safePluginExecute.
+                if (isVettedPlugin(pluginSource)) {
+                    activity.logo.evalFlowDict[flow] = new Function(
+                        "logo",
+                        "turtle",
+                        "blk",
+                        "receivedArg",
+                        "actionArgs",
+                        "args",
+                        "isflow",
+                        obj["FLOWPLUGINS"][flow]
+                    );
+                } else {
+                    activity.logo.evalFlowDict[flow] = obj["FLOWPLUGINS"][flow];
+                }
             } catch (e) {
                 console.error("Failed to compile FLOWPLUGIN:", flow, e);
                 activity.logo.evalFlowDict[flow] = null;
@@ -815,20 +891,19 @@ const processPluginData = (activity, pluginData, pluginSource) => {
     if ("ARGPLUGINS" in obj) {
         for (const arg in obj["ARGPLUGINS"]) {
             try {
-                // Pre-compile the plugin code into a function to avoid eval() in parseArg
-                // NOTE: Plugins are trusted code.
-                // SECURITY: Only safe because ARGPLUGINS are trusted code.
-                // new Function is used intentionally to precompile plugin execution.
-                // Standard scope exposure: logo, turtle, blk, parentBlk, receivedArg, tur
-                activity.logo.evalArgDict[arg] = new Function(
-                    "logo",
-                    "turtle",
-                    "blk",
-                    "parentBlk",
-                    "receivedArg",
-                    "tur",
-                    obj["ARGPLUGINS"][arg]
-                );
+                if (isVettedPlugin(pluginSource)) {
+                    activity.logo.evalArgDict[arg] = new Function(
+                        "logo",
+                        "turtle",
+                        "blk",
+                        "parentBlk",
+                        "receivedArg",
+                        "tur",
+                        obj["ARGPLUGINS"][arg]
+                    );
+                } else {
+                    activity.logo.evalArgDict[arg] = obj["ARGPLUGINS"][arg];
+                }
             } catch (e) {
                 console.error("Failed to compile ARGPLUGIN:", arg, e);
                 activity.logo.evalArgDict[arg] = null;
@@ -854,14 +929,17 @@ const processPluginData = (activity, pluginData, pluginSource) => {
     if ("SETTERPLUGINS" in obj) {
         for (const setter in obj["SETTERPLUGINS"]) {
             try {
-                // SECURITY: Plugins are trusted code.
-                activity.logo.evalSetterDict[setter] = new Function(
-                    "logo",
-                    "blk",
-                    "value",
-                    "turtle",
-                    obj["SETTERPLUGINS"][setter]
-                );
+                if (isVettedPlugin(pluginSource)) {
+                    activity.logo.evalSetterDict[setter] = new Function(
+                        "logo",
+                        "blk",
+                        "value",
+                        "turtle",
+                        obj["SETTERPLUGINS"][setter]
+                    );
+                } else {
+                    activity.logo.evalSetterDict[setter] = obj["SETTERPLUGINS"][setter];
+                }
             } catch (e) {
                 console.error("Failed to compile SETTERPLUGIN:", setter, e);
                 activity.logo.evalSetterDict[setter] = null;
@@ -890,13 +968,16 @@ const processPluginData = (activity, pluginData, pluginSource) => {
     if ("PARAMETERPLUGINS" in obj) {
         for (const parameter in obj["PARAMETERPLUGINS"]) {
             try {
-                // SECURITY: Plugins are trusted code.
-                activity.logo.evalParameterDict[parameter] = new Function(
-                    "logo",
-                    "turtle",
-                    "blk",
-                    obj["PARAMETERPLUGINS"][parameter]
-                );
+                if (isVettedPlugin(pluginSource)) {
+                    activity.logo.evalParameterDict[parameter] = new Function(
+                        "logo",
+                        "turtle",
+                        "blk",
+                        obj["PARAMETERPLUGINS"][parameter]
+                    );
+                } else {
+                    activity.logo.evalParameterDict[parameter] = obj["PARAMETERPLUGINS"][parameter];
+                }
             } catch (e) {
                 console.error("Failed to compile PARAMETERPLUGIN:", parameter, e);
                 activity.logo.evalParameterDict[parameter] = null;
@@ -1467,6 +1548,21 @@ const LCD = (a, b) => {
  * @returns {Array} The sum of the two rational numbers in the form [numerator, denominator].
  */
 let rationalSum = (a, b) => {
+    if (
+        !Array.isArray(a) ||
+        a.length < 2 ||
+        !Array.isArray(b) ||
+        b.length < 2 ||
+        typeof a[0] !== "number" ||
+        typeof a[1] !== "number" ||
+        typeof b[0] !== "number" ||
+        typeof b[1] !== "number" ||
+        a[1] === 0 ||
+        b[1] === 0
+    ) {
+        console.warn("Invalid input passed to rationalSum:", a, b);
+        return [0, 1];
+    }
     if (a === 0 || b === 0) {
         // console.debug("divide by zero?");
         return [0, 1];
@@ -1875,6 +1971,7 @@ if (typeof module !== "undefined" && module.exports) {
         closeWidgets,
         closeBlkWidgets,
         resolveObject,
-        importMembers
+        importMembers,
+        escapeHTML
     };
 }
