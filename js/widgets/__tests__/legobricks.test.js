@@ -1,9 +1,9 @@
 /**
  * MusicBlocks v3.6.2
  *
- * @author Test Implementation
+ * @author Nirav Sharma
  *
- * @copyright 2026 Test Implementation
+ * @copyright 2026 Nirav Sharma
  *
  * @license
  * This program is free software: you can redistribute it and/or modify
