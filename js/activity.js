@@ -228,6 +228,7 @@ const doAnalyzeProject = function () {
 /**
  * Represents an activity in the application.
  */
+// eslint-disable-next-line no-redeclare
 class Activity {
     /**
      * Creates an Activity instance.
@@ -3549,7 +3550,7 @@ class Activity {
                         });
 
                         li.append(img);
-                        li.append("<a> " + item.label + "</a>");
+                        li.append($j("<a>").text(" " + item.label));
 
                         return li.appendTo(
                             ul.css({
@@ -5231,7 +5232,7 @@ class Activity {
             const pitch = pitches;
             pitchDuration = toFraction(pitchDuration);
             const adjustedNote = _adjustPitch(pitch.name, keySignature).toUpperCase();
-            if (triplet != null) {
+            if (triplet !== null) {
                 pitchDuration[1] = meterDen * triplet;
             }
 
@@ -7105,17 +7106,13 @@ class Activity {
                 const instance = $helpfulSearch.autocomplete("instance");
                 if (instance) {
                     instance._renderItem = (ul, item) => {
-                        return $j("<li></li>")
-                            .append(
-                                '<img src="' +
-                                    (item.artwork || "") +
-                                    '" height = "20px">' +
-                                    "<a>" +
-                                    " " +
-                                    item.label +
-                                    "</a>"
-                            )
-                            .appendTo(ul.css("z-index", 35000));
+                        const li = $j("<li></li>");
+                        const img = document.createElement("img");
+                        img.src = item.artwork || "";
+                        img.height = 20;
+                        li.append(img);
+                        li.append($j("<a>").text(" " + item.label));
+                        return li.appendTo(ul.css("z-index", 35000));
                     };
                 }
                 $helpfulSearch.data("autocomplete-init", true);
@@ -7200,6 +7197,9 @@ class Activity {
          * Shows help page
          */
         const showHelp = activity => {
+            if (window.widgetWindows?.isOpen("keyboard-shortcuts")) {
+                window.widgetWindows.clear("keyboard-shortcuts");
+            }
             activity._showHelp();
         };
 
@@ -7207,6 +7207,251 @@ class Activity {
             // Will show welcome page by default.
             await lazyLoad("widgets/help");
             new HelpWidget(this, false);
+        };
+
+        const showKeyboardShortcuts = activity => {
+            if (window.widgetWindows?.isOpen("help")) {
+                window.widgetWindows.clear("help");
+            }
+            activity._showKeyboardShortcuts();
+        };
+
+        this._showKeyboardShortcuts = () => {
+            const platformKeys = (windowsKeys, macKeys = windowsKeys) =>
+                `${_("Windows/Linux")}: ${windowsKeys}\n${_("Mac")}: ${macKeys}`;
+
+            const shortcutSections = [
+                {
+                    title: _("Workspace"),
+                    items: [
+                        {
+                            keys: platformKeys("Alt + R", "Option + R"),
+                            action: _("Play project")
+                        },
+                        {
+                            keys: platformKeys("Alt + S", "Option + S"),
+                            action: _("Stop project")
+                        },
+                        {
+                            keys: platformKeys("Alt + Enter", "Option + Enter"),
+                            action: _("Play or stop depending on the current state")
+                        },
+                        {
+                            keys: platformKeys("Space", "Space"),
+                            action: _("Play or stop when no text input or widget is active")
+                        },
+                        {
+                            keys: platformKeys("Shift + Space", "Shift + Space"),
+                            action: _("Toggle stage scale")
+                        },
+                        {
+                            keys: platformKeys("Home", "Home"),
+                            action: _("Jump to home position")
+                        },
+                        {
+                            keys: platformKeys("End", "End"),
+                            action: _("Jump to the bottom of the workspace")
+                        },
+                        {
+                            keys: platformKeys("Page Up", "Page Up"),
+                            action: _("Scroll workspace up")
+                        },
+                        {
+                            keys: platformKeys("Page Down", "Page Down"),
+                            action: _("Scroll workspace down")
+                        },
+                        {
+                            keys: platformKeys("Esc", "Esc"),
+                            action: _("Hide block search when it is open")
+                        },
+                        {
+                            keys: platformKeys("d,r,m,f,s,l,t", "d,r,m,f,s,l,t"),
+                            action: _(
+                                "You can type d to create a do block and r to create a re block etc."
+                            )
+                        }
+                    ]
+                },
+                {
+                    title: _("Editing"),
+                    items: [
+                        {
+                            keys: platformKeys("Alt + C", "Option + C"),
+                            action: _("Copy selected stack")
+                        },
+                        {
+                            keys: platformKeys("Alt + V", "Option + V"),
+                            action: _("Paste previous stack")
+                        },
+                        {
+                            keys: platformKeys("Ctrl + V", "Control + V"),
+                            action: _("Open the JSON paste box")
+                        },
+                        {
+                            keys: platformKeys("Enter", "Enter"),
+                            action: _("Paste JSON when the paste box is focused")
+                        },
+                        {
+                            keys: platformKeys("Delete", "Delete"),
+                            action: _("Extract the active block")
+                        },
+                        {
+                            keys: platformKeys("Alt + E", "Option + E"),
+                            action: _("Clear workspace")
+                        },
+                        {
+                            keys: platformKeys("Alt + B", "Option + B"),
+                            action: _("Save block artwork")
+                        },
+                        {
+                            keys: platformKeys("Alt + H", "Option + H"),
+                            action: _("Save block help")
+                        }
+                    ]
+                },
+                {
+                    title: _("Navigation"),
+                    items: [
+                        {
+                            keys: platformKeys("Tab / Shift + Tab", "Tab / Shift + Tab"),
+                            action: _("Move focus between the toolbar, palettes, and workspace")
+                        },
+                        {
+                            keys: platformKeys(_("Arrow keys"), _("Arrow keys")),
+                            action: _(
+                                "Move the active block, scroll palettes, adjust the tempo widget, or pan the workspace depending on context"
+                            )
+                        },
+                        {
+                            keys: platformKeys("/", "/"),
+                            action: _("Pan workspace right when horizontal scrolling is enabled")
+                        },
+                        {
+                            keys: platformKeys("\\", "\\"),
+                            action: _("Pan workspace left when horizontal scrolling is enabled")
+                        }
+                    ]
+                },
+                {
+                    title: _("Toolbar"),
+                    items: [
+                        {
+                            keys: platformKeys(
+                                _("Arrow Left / Arrow Right"),
+                                _("Arrow Left / Arrow Right")
+                            ),
+                            action: _("Move focus within the current toolbar")
+                        },
+                        {
+                            keys: platformKeys(
+                                _("Arrow Up / Arrow Down"),
+                                _("Arrow Up / Arrow Down")
+                            ),
+                            action: _("Move focus between main and auxiliary toolbars")
+                        },
+                        {
+                            keys: platformKeys("Enter", "Enter"),
+                            action: _("Activate the focused toolbar button")
+                        },
+                        {
+                            keys: platformKeys("Esc", "Esc"),
+                            action: _("Exit toolbar keyboard navigation")
+                        }
+                    ]
+                },
+                {
+                    title: _("Widget Windows"),
+                    items: [
+                        {
+                            keys: platformKeys("Esc", "Esc"),
+                            action: _("Close the focused widget window")
+                        },
+                        {
+                            keys: platformKeys("Ctrl + Shift + M", "Command + Shift + M"),
+                            action: _("Maximize or restore the focused widget window")
+                        }
+                    ]
+                },
+                {
+                    title: _("Help and Pitch Slider"),
+                    items: [
+                        {
+                            keys: platformKeys(
+                                _("Arrow Left / Arrow Right"),
+                                _("Arrow Left / Arrow Right")
+                            ),
+                            action: _("Move between help pages when Help is open")
+                        },
+                        {
+                            keys: platformKeys(_("Arrow keys"), _("Arrow keys")),
+                            action: _("Adjust pitch by semitone when Pitch Slider is open")
+                        }
+                    ]
+                }
+            ];
+
+            const widgetWindow = window.widgetWindows.windowFor(
+                this,
+                _("Keyboard shortcuts"),
+                "keyboard-shortcuts",
+                true
+            );
+            widgetWindow.clear();
+            widgetWindow.show();
+
+            const widgetBody = widgetWindow.getWidgetBody();
+            widgetBody.className = "wfbWidget keyboard-shortcuts-widget";
+            widgetBody.style.padding = "0";
+            widgetBody.style.display = "block";
+            widgetBody.style.height = "min(72vh, 680px)";
+            widgetBody.style.width = "min(68vw, 760px)";
+            widgetBody.style.maxWidth = "100%";
+            widgetBody.style.overflow = "hidden";
+
+            const wrapper = document.createElement("div");
+            wrapper.className = "keyboard-shortcuts-panel";
+
+            const intro = document.createElement("div");
+            intro.className = "keyboard-shortcuts-hero";
+            intro.innerHTML =
+                `<div class="keyboard-shortcuts-hero-title">${_("Keyboard shortcuts")}</div>` +
+                `<div class="keyboard-shortcuts-hero-copy">${_(
+                    "Shortcuts are context-sensitive. Some only work when a related panel, widget, or mode is active. Windows/Linux and Mac equivalents are shown together."
+                )}</div>`;
+            wrapper.appendChild(intro);
+
+            shortcutSections.forEach(section => {
+                const sectionCard = document.createElement("section");
+                sectionCard.className = "keyboard-shortcuts-section";
+
+                const heading = document.createElement("div");
+                heading.textContent = section.title;
+                heading.className = "keyboard-shortcuts-section-title";
+                sectionCard.appendChild(heading);
+
+                section.items.forEach(item => {
+                    const row = document.createElement("div");
+                    row.className = "keyboard-shortcuts-row";
+
+                    const key = document.createElement("div");
+                    key.textContent = item.keys;
+                    key.className = "keyboard-shortcuts-key";
+
+                    const action = document.createElement("div");
+                    action.textContent = item.action;
+                    action.className = "keyboard-shortcuts-action";
+
+                    row.appendChild(key);
+                    row.appendChild(action);
+                    sectionCard.appendChild(row);
+                });
+
+                wrapper.appendChild(sectionCard);
+            });
+
+            widgetBody.appendChild(wrapper);
+            widgetWindow.sendToCenter();
+            requestAnimationFrame(() => widgetWindow.sendToCenter());
         };
 
         /*
@@ -7768,7 +8013,13 @@ class Activity {
             // Use managed addEventListener for automatic cleanup
             this.addEventListener(document, "mousemove", this.handleMouseMove);
             this.addEventListener(document, "click", this.handleDocumentClick);
-            this.addEventListener(window, "beforeunload", this._stopRenderLoop);
+            this.addEventListener(window, "beforeunload", () => {
+                this._stopRenderLoop();
+                if (this._autoSaveInterval !== null) {
+                    clearInterval(this._autoSaveInterval);
+                    this._autoSaveInterval = null;
+                }
+            });
 
             this._createMsgContainer(
                 "#ffffff",
@@ -7859,7 +8110,7 @@ class Activity {
             );
             this.toolbar.renderPlanetIcon(this.planet, doOpenSamples);
             this.toolbar.renderMenuIcon(showHideAuxMenu);
-            this.toolbar.renderHelpIcon(showHelp);
+            this.toolbar.renderHelpIcon(showHelp, showKeyboardShortcuts);
             this.toolbar.renderModeSelectIcon(
                 doSwitchMode,
                 () => doRecordButton(this),
@@ -7890,6 +8141,27 @@ class Activity {
             }
 
             window.saveLocally = this.saveLocally;
+
+            // Auto-save live workspace every 5 minutes to guard against
+            // data loss from browser crashes (see issue #2994).
+            // Deferred while the project is actively running to avoid
+            // interrupting playback.
+            this._autoSaveInterval = setInterval(
+                () => {
+                    try {
+                        if (this.logo && this.logo._alreadyRunning) {
+                            return;
+                        }
+
+                        if (this.saveLocally !== null && this.saveLocally !== undefined) {
+                            this.saveLocally();
+                        }
+                    } catch (e) {
+                        console.error("[AutoSave] Failed:", e);
+                    }
+                },
+                5 * 60 * 1000
+            );
 
             initBasicProtoBlocks(this);
 
@@ -8235,72 +8507,50 @@ class Activity {
             // Enabled mouse over and mouse out events.
             this.stage.enableMouseOver(10); // default is 20
 
-            this.cartesianBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(CARTESIAN))
-            );
-            this.polarBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(POLAR))
-            );
-            this.trebleBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE))
-            );
-            this.grandBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(GRAND))
-            );
-            this.sopranoBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(SOPRANO))
-            );
-            this.altoBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(ALTO))
-            );
-            this.tenorBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(TENOR))
-            );
-            this.bassBitmap = this._createGrid(
-                "data:image/svg+xml;base64," + window.btoa(base64Encode(BASS))
-            );
+            // Cache encoded SVG data URIs to avoid re-encoding identical artwork on startup.
+            const gridDataUri = svg =>
+                "data:image/svg+xml;base64," + window.btoa(base64Encode(svg));
+            const encodedGridUris = {
+                cartesian: gridDataUri(CARTESIAN),
+                polar: gridDataUri(POLAR),
+                treble: gridDataUri(TREBLE),
+                grand: gridDataUri(GRAND),
+                soprano: gridDataUri(SOPRANO),
+                alto: gridDataUri(ALTO),
+                tenor: gridDataUri(TENOR),
+                bass: gridDataUri(BASS),
+                grandG: gridDataUri(GRAND_G),
+                grandF: gridDataUri(GRAND_F),
+                trebleG: gridDataUri(TREBLE_G),
+                trebleF: gridDataUri(TREBLE_F)
+            };
+
+            this.cartesianBitmap = this._createGrid(encodedGridUris.cartesian);
+            this.polarBitmap = this._createGrid(encodedGridUris.polar);
+            this.trebleBitmap = this._createGrid(encodedGridUris.treble);
+            this.grandBitmap = this._createGrid(encodedGridUris.grand);
+            this.sopranoBitmap = this._createGrid(encodedGridUris.soprano);
+            this.altoBitmap = this._createGrid(encodedGridUris.alto);
+            this.tenorBitmap = this._createGrid(encodedGridUris.tenor);
+            this.bassBitmap = this._createGrid(encodedGridUris.bass);
 
             // We use G (one sharp) and F (one flat) as prototypes for all
             // of the accidentals. When applied, these graphics are offset
             // vertically to rendering different sharps and flats and
             // horizontally so as not to overlap.
             for (let i = 0; i < 7; i++) {
-                this.grandSharpBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(GRAND_G))
-                );
-                this.grandFlatBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(GRAND_F))
-                );
-                this.trebleSharpBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_G))
-                );
-                this.trebleFlatBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_F))
-                );
-                this.sopranoSharpBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_G))
-                );
-                this.sopranoFlatBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_F))
-                );
-                this.altoSharpBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_G))
-                );
-                this.altoFlatBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_F))
-                );
-                this.tenorSharpBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_G))
-                );
-                this.tenorFlatBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_F))
-                );
-                this.bassSharpBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_G))
-                );
-                this.bassFlatBitmap[i] = this._createGrid(
-                    "data:image/svg+xml;base64," + window.btoa(base64Encode(TREBLE_F))
-                );
+                this.grandSharpBitmap[i] = this._createGrid(encodedGridUris.grandG);
+                this.grandFlatBitmap[i] = this._createGrid(encodedGridUris.grandF);
+                this.trebleSharpBitmap[i] = this._createGrid(encodedGridUris.trebleG);
+                this.trebleFlatBitmap[i] = this._createGrid(encodedGridUris.trebleF);
+                this.sopranoSharpBitmap[i] = this._createGrid(encodedGridUris.trebleG);
+                this.sopranoFlatBitmap[i] = this._createGrid(encodedGridUris.trebleF);
+                this.altoSharpBitmap[i] = this._createGrid(encodedGridUris.trebleG);
+                this.altoFlatBitmap[i] = this._createGrid(encodedGridUris.trebleF);
+                this.tenorSharpBitmap[i] = this._createGrid(encodedGridUris.trebleG);
+                this.tenorFlatBitmap[i] = this._createGrid(encodedGridUris.trebleF);
+                this.bassSharpBitmap[i] = this._createGrid(encodedGridUris.trebleG);
+                this.bassFlatBitmap[i] = this._createGrid(encodedGridUris.trebleF);
             }
 
             const URL = window.location.href;
