@@ -1686,7 +1686,7 @@ class Activity {
             confirmBtn.classList.add("confirm-button");
             confirmBtn.textContent = _("Confirm");
             confirmBtn.style.backgroundColor = platformColor.blueButton;
-            confirmBtn.style.color = "white";
+            confirmBtn.style.color = platformColor.blueButtonText;
             confirmBtn.style.border = "none";
             confirmBtn.style.borderRadius = "4px";
             confirmBtn.style.padding = "8px 16px";
@@ -5701,8 +5701,25 @@ class Activity {
             }
 
             const finalBlock = [];
-            // Some Error are here need to be fixed
             for (const staffIndex in staffBlocksMap) {
+                // Validate that the staff has sufficient block data for linking.
+                // Staves with no notes or incomplete structures from certain
+                // ABC notation inputs can cause crashes when accessing nested
+                // array elements without bounds checking.
+                if (
+                    !staffBlocksMap[staffIndex].baseBlocks ||
+                    staffBlocksMap[staffIndex].baseBlocks.length === 0 ||
+                    !staffBlocksMap[staffIndex].baseBlocks[0] ||
+                    !staffBlocksMap[staffIndex].baseBlocks[0][0] ||
+                    staffBlocksMap[staffIndex].baseBlocks[0][0].length < 4 ||
+                    staffBlocksMap[staffIndex].startBlock.length < 3 ||
+                    !staffBlocksMap[staffIndex].nameddoArray ||
+                    !staffBlocksMap[staffIndex].nameddoArray[staffIndex] ||
+                    staffBlocksMap[staffIndex].nameddoArray[staffIndex].length === 0
+                ) {
+                    finalBlock.push(...staffBlocksMap[staffIndex].startBlock);
+                    continue;
+                }
                 staffBlocksMap[staffIndex].startBlock[
                     staffBlocksMap[staffIndex].startBlock.length - 3
                 ][4][2] =
@@ -5718,6 +5735,16 @@ class Activity {
                     ][0];
                 const repeatblockids = staffBlocksMap[staffIndex].repeatArray;
                 for (const repeatId of repeatblockids) {
+                    // Skip repeat entries with out-of-bounds block indices
+                    if (
+                        repeatId.start < 0 ||
+                        repeatId.end < 0 ||
+                        repeatId.start >= staffBlocksMap[staffIndex].baseBlocks.length ||
+                        repeatId.end >= staffBlocksMap[staffIndex].baseBlocks.length
+                    ) {
+                        continue;
+                    }
+
                     if (repeatId.start === 0) {
                         staffBlocksMap[staffIndex].repeatBlock.push([
                             blockId,
@@ -8140,11 +8167,7 @@ class Activity {
 
             const that = this;
 
-            if (!jQuery.browser.mozilla) {
-                window.onblur = () => {
-                    doHardStopButton(that, true);
-                };
-            }
+            this.setupWindowBlurHandler(doHardStopButton);
 
             this.stage = new createjs.Stage(this.canvas);
             createjs.Touch.enable(this.stage);
@@ -8942,6 +8965,24 @@ class Activity {
     }
 
     /**
+     * Installs the shared blur-stop hook without overwriting any existing
+     * global blur handler.
+     *
+     * @param {Function} doHardStopButton - Shared stop action callback.
+     */
+    setupWindowBlurHandler(doHardStopButton) {
+        if (jQuery.browser.mozilla) {
+            return;
+        }
+
+        this._handleWindowBlur = () => {
+            doHardStopButton(this, true);
+        };
+
+        this.addEventListener(window, "blur", this._handleWindowBlur);
+    }
+
+    /**
      * Managed removeEventListener that also updates the tracker.
      * @param {EventTarget} target - The DOM element or object to remove the listener from.
      * @param {string} type - The event type.
@@ -9050,19 +9091,11 @@ class Activity {
                 this.palettes.hide();
             }
 
-            if (typeof this.palettes.clear !== "function") {
-                console.warn("Palettes clear method not available");
-                // Fallback clear implementation
-                this.palettes.dict = {};
-                this.palettes.visible = false;
-                this.palettes.activePalette = null;
-                this.palettes.paletteObject = null;
-            } else {
-                this.palettes.clear();
-            }
+            this.palettes.reinitialize(this.palettes);
 
-            // Reinitialize palettes
-            initPalettes(this.palettes);
+            // Increase palette element style.top value for correct alignment
+            const element = docById("palette");
+            element.style.top = `${60 + this.palettes.top}px`;
 
             // Reinitialize blocks
             if (this.blocks) {
