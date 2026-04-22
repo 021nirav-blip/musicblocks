@@ -548,11 +548,11 @@ class Logo {
         }
 
         this.deps.Singer.setMasterVolume(this.activity.logo, DEFAULTVOLUME);
-        for (const turtle in this.activity.turtles.turtleList) {
+        for (const t in this.activity.turtles.turtleList) {
             // Cache ithTurtle result to avoid redundant function calls in inner loop
-            const tur = this.activity.turtles.ithTurtle(turtle);
+            const tur = this.activity.turtles.ithTurtle(t);
             for (const synth in tur.singer.synthVolume) {
-                this.deps.Singer.setSynthVolume(this, turtle, synth, DEFAULTVOLUME);
+                this.deps.Singer.setSynthVolume(this, t, synth, DEFAULTVOLUME);
             }
         }
 
@@ -1681,8 +1681,9 @@ class Logo {
                 } else {
                     nextFlow = logo.blockList[blk].connections[0];
                     if (
-                        logo.blockList[nextFlow].name === "action" ||
-                        logo.blockList[nextFlow].name === "backward"
+                        nextFlow != null &&
+                        (logo.blockList[nextFlow].name === "action" ||
+                            logo.blockList[nextFlow].name === "backward")
                     ) {
                         nextFlow = null;
                     } else {
@@ -1982,8 +1983,8 @@ class Logo {
                 logo._syncCounter++;
                 if (logo._syncCounter >= logo._YIELD_AFTER_SYNC_RUNS) {
                     logo._syncCounter = 0;
-                    setTimeout(() => {
-                        if (!logo.stopTurtle) {
+                    logo._timerManager.setGuardedTimeout(
+                        () =>
                             logo.runFromBlockNow(
                                 logo,
                                 turtle,
@@ -1991,9 +1992,10 @@ class Logo {
                                 isflow,
                                 passArg,
                                 queueStart
-                            );
-                        }
-                    }, 0);
+                            ),
+                        0,
+                        () => logo.stopTurtle
+                    );
                 } else {
                     logo.runFromBlockNow(logo, turtle, nextBlock, isflow, passArg, queueStart);
                 }
