@@ -92,6 +92,15 @@
                 this.rel = 'stylesheet';
             "
         />
+        <link
+            rel="preload"
+            href="css/svgAssetSelector.css"
+            as="style"
+            onload="
+                this.onload = null;
+                this.rel = 'stylesheet';
+            "
+        />
         <link rel="prefetch" as="video" href="loading-animation.webm" type="video/webm" />
         <link rel="prefetch" as="video" href="loading-animation.mp4" type="video/mp4" />
 
@@ -103,9 +112,7 @@
 
         <script src="lib/reqwest.js" defer></script>
 
-        <script src="lib/jquery-3.7.1.min.js" defer></script>
-        <script src="lib/jquery-ui.js" defer></script>
-        <script src="lib/materialize.min.js" defer></script>
+        <script src="dist/vendor.min.js"></script>
         <link
             rel="preload"
             href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css"
@@ -118,13 +125,11 @@
                 href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css"
         /></noscript>
         <script src="js/utils/jquery-setup.js" defer></script>
-        <script src="lib/Tone.js" defer></script>
         <script src="lib/midi.js" defer></script>
         <script src="lib/jquery.ruler.js" defer></script>
         <script src="lib/modernizr-2.6.2.min.js" defer></script>
         <script src="lib/raphael.min.js" defer></script>
         <script src="lib/wheelnav.js" defer></script>
-        <script src="lib/abc.min.js" defer></script>
         <script src="lib/codejar/codejar.min.js" defer></script>
         <script src="lib/codejar/highlight.pack.js" defer></script>
         <link
@@ -159,6 +164,7 @@
         </script>
         <script src="lib/astring.min.js" defer></script>
         <script src="js/utils/mb-dialog.js" defer></script>
+        <script src="js/svgAssetSelector.js" defer></script>
         <script src="lib/acorn.min.js" defer></script>
         <script src="env.js" defer></script>
 
@@ -177,8 +183,6 @@
             onload="this.onload=null;this.rel='stylesheet'"
         />
         <noscript><link rel="stylesheet" href="css/themes.css?v=fixed" /></noscript>
-        <script src="lib/easeljs.min.js" defer></script>
-        <script src="lib/tweenjs.min.js" defer></script>
         <script>
             let ast2blocklist_config;
             window.ast2blocklist_config_failed = false;
