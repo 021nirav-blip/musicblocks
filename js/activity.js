@@ -29,7 +29,7 @@ try {
    global
 
    ALTO, analyzeProject, BASS, BIGGERBUTTON, BIGGERDISABLEBUTTON, debugLog,
-   ActivityContext,
+   ErrorHandler, ActivityContext,
    Boundary, CARTESIAN, changeImage, closeWidgets,
    COLLAPSEBLOCKSBUTTON, COLLAPSEBUTTON, createDefaultStack,
    createHelpContent, createjs, DATAOBJS, DEFAULTBLOCKSCALE,
@@ -92,6 +92,7 @@ let MYDEFINES = [
     "utils/utils-logic",
     "utils/utils",
     "utils/retryWithBackoff",
+    "utils/error-handler",
     "utils/debugLog",
     "activity/artwork",
     "widgets/status",
@@ -387,7 +388,7 @@ class Activity {
                 }
             }
         } catch (e) {
-            console.error("Error accessing themePreference storage:", e);
+            ErrorHandler.capture(e, { operation: "loadThemePreference" });
         }
 
         this.beginnerMode = true;
@@ -403,7 +404,7 @@ class Activity {
                 }
             }
         } catch (e) {
-            console.error(e);
+            ErrorHandler.recoverable(e, { operation: "loadBeginnerMode" });
         }
 
         try {
@@ -420,7 +421,7 @@ class Activity {
                 i18next.changeLanguage(lang);
             }
         } catch (e) {
-            console.error(e);
+            ErrorHandler.recoverable(e, { operation: "loadLanguagePreference" });
         }
 
         this.KeySignatureEnv = ["C", "major", false];
@@ -430,7 +431,7 @@ class Activity {
                 this.KeySignatureEnv[2] = this.KeySignatureEnv[2] === "true";
             }
         } catch (e) {
-            console.error(e);
+            ErrorHandler.recoverable(e, { operation: "loadKeySignatureEnv" });
         }
 
         /**
@@ -1988,7 +1989,7 @@ class Activity {
                         preferredVideoCodecs: "auto"
                     });
                 } catch (error) {
-                    console.error("Screen capture failed:", error);
+                    ErrorHandler.capture(error, { operation: "screenCapture" });
                     flag = 0;
                     throw error;
                 }
@@ -2199,7 +2200,7 @@ class Activity {
                         }
                         recInside.setAttribute("fill", "red");
                     } catch (error) {
-                        console.error("Recording failed:", error);
+                        ErrorHandler.recoverable(error, { operation: "recording" });
                         that.textMsg(_("Recording failed: ") + error.message);
                         flag = 0;
                         // Re-enable recording button
@@ -4464,7 +4465,7 @@ class Activity {
                     hideContents.click();
                 }
             } catch (error) {
-                console.error("An error occurred in resizeCanvas_:", error);
+                ErrorHandler.recoverable(error, { operation: "resizeCanvas" });
             }
         };
 
@@ -5267,7 +5268,7 @@ class Activity {
                         that.blocks.loadNewBlocks(JSON.parse(that.sessionData));
                     }
                 } catch (e) {
-                    console.error(e);
+                    ErrorHandler.recoverable(e, { operation: "loadSessionData" });
                 }
             } else {
                 that.justLoadStart();
@@ -5302,7 +5303,7 @@ class Activity {
                         : _("My Project");
                 this.textMsg(projectName);
             } catch (e) {
-                console.error(e);
+                ErrorHandler.recoverable(e, { operation: "loadProjectName" });
                 this.textMsg(_("My Project"));
             }
 
@@ -5323,7 +5324,7 @@ class Activity {
                         throw new Error("Planet openProjectFromPlanet is unavailable.");
                     }
                 } catch (e) {
-                    console.error(e);
+                    ErrorHandler.recoverable(e, { operation: "openProjectFromPlanet" });
                     that.loadStartWrapper(loadStart);
                 }
 
@@ -5331,10 +5332,12 @@ class Activity {
                     try {
                         that.planet.initialiseNewProject();
                     } catch (e) {
-                        console.error(e);
+                        ErrorHandler.recoverable(e, { operation: "planetInitialiseNewProject" });
                     }
                 } else {
-                    console.error("Planet initialiseNewProject is unavailable.");
+                    ErrorHandler.warn("Planet initialiseNewProject is unavailable.", {
+                        operation: "loadFromPlanet"
+                    });
                 }
 
                 finishLoading();
@@ -6983,7 +6986,9 @@ class Activity {
                         }
                     }, 1000);
                 } else {
-                    console.error("Could not load built-in plugin: " + name);
+                    ErrorHandler.warn("Could not load built-in plugin: " + name, {
+                        operation: "loadPlugin"
+                    });
                 }
             };
             xhr.send();
@@ -7867,8 +7872,7 @@ class Activity {
                     this.storage.allProjects = JSON.stringify(["My Project"]);
                 } catch (e) {
                     // Edge case, eg. Firefox localSorage DB corrupted
-
-                    console.error(e);
+                    ErrorHandler.recoverable(e, { operation: "saveLocally_setCurrentProject" });
                 }
             }
 
@@ -7877,7 +7881,7 @@ class Activity {
                 p = this.storage.currentProject;
                 this.storage["SESSION" + p] = data;
             } catch (e) {
-                console.error(e);
+                ErrorHandler.recoverable(e, { operation: "saveLocally_saveSession" });
             }
 
             const img = new Image();
@@ -7910,7 +7914,7 @@ class Activity {
                     offscreen.getContext("2d").drawImage(img, 0, 0);
                     this.storage["SESSIONIMAGE" + p] = offscreen.toDataURL("image/png");
                 } catch (e) {
-                    console.error("[saveLocally] Thumbnail save failed:", e);
+                    ErrorHandler.recoverable(e, { operation: "saveLocally_thumbnail" });
                 }
             };
 
@@ -8434,7 +8438,7 @@ class Activity {
                             this.saveLocally();
                         }
                     } catch (e) {
-                        console.error("[AutoSave] Failed:", e);
+                        ErrorHandler.recoverable(e, { operation: "autoSave" });
                     }
                 },
                 5 * 60 * 1000
@@ -8464,7 +8468,7 @@ class Activity {
                     const customModeDataObj = JSON.parse(custommodeData);
                     Object.assign(MUSICALMODES["custom"], customModeDataObj);
                 } catch (e) {
-                    console.error("Error parsing custommode data:", e);
+                    ErrorHandler.recoverable(e, { operation: "parseCustomMode" });
                 }
             }
 
@@ -8558,7 +8562,7 @@ class Activity {
                                         )
                                     );
 
-                                    console.error(e);
+                                    ErrorHandler.capture(e, { operation: "loadProjectFromFile" });
                                     document.body.style.cursor = "default";
                                     that.loading = false;
                                 }
@@ -8572,7 +8576,7 @@ class Activity {
                             console.debug(midi);
                             midiImportBlocks(midi);
                         } catch (err) {
-                            console.error("MIDI import failed:", err);
+                            ErrorHandler.capture(err, { operation: "midiImport" });
                             if (that && typeof that.errorMsg === "function") {
                                 that.errorMsg(
                                     _(
@@ -8669,7 +8673,7 @@ class Activity {
                                 that.loading = false;
                                 that.refreshCanvas();
                             } catch (e) {
-                                console.error(e);
+                                ErrorHandler.capture(e, { operation: "loadFromFile" });
                                 that.errorMsg(
                                     _(
                                         "Cannot load project from the file. Please check the file type."
@@ -8687,7 +8691,7 @@ class Activity {
                         console.debug(midi);
                         midiImportBlocks(midi);
                     } catch (err) {
-                        console.error("MIDI import failed:", err);
+                        ErrorHandler.capture(err, { operation: "midiImportBlocks" });
                         if (that && typeof that.errorMsg === "function") {
                             that.errorMsg(
                                 _("Cannot load project from the file. Please check the file type.")
@@ -9136,7 +9140,7 @@ class Activity {
             localStorage.setItem("beginnerMode", this.beginnerMode.toString());
             localStorage.setItem("themePreference", this.themePreference.toString());
         } catch (e) {
-            console.error("Error saving to localStorage:", e);
+            ErrorHandler.recoverable(e, { operation: "saveLocalStorage" });
         }
     }
 
@@ -9217,7 +9221,7 @@ class Activity {
 
             this.refreshCanvas();
         } catch (e) {
-            console.error("Error regenerating palettes:", e);
+            ErrorHandler.capture(e, { operation: "regeneratePalettes" });
             this.errorMsg(_("Error regenerating palettes. Please refresh the page."));
         }
     }
