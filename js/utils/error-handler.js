@@ -104,6 +104,11 @@ const ErrorHandler = {
     }
 };
 
+// Ensure the global exists for the RequireJS shim (exports: "ErrorHandler")
+if (typeof window !== "undefined") {
+    window.ErrorHandler = ErrorHandler;
+}
+
 if (typeof module !== "undefined" && module.exports) {
     module.exports = ErrorHandler;
 }
